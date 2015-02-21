@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"> 
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+		<title>Interactive Text with Commentable Paragraphs</title>
+		<meta name="description" content="Interactive Text with Commentable Paragraphs" />
+		<meta name="keywords" content="jquery, expanding" />
+		<meta name="author" content="Alexey Leonov, Codrops" />
+		<link rel="shortcut icon" href="../favicon.ico"> 
+		<link rel="stylesheet" type="text/css" href="css/default.css" />
+		<link rel="stylesheet" type="text/css" href="css/component.css" />
+		<script src="js/modernizr.custom.js"></script>
+	</head>
+	<body>
+		<div class="container">	
+			<header class="clearfix">
+				<h1>Interactive Text <span>with Commentable Paragraphs</span></h1>	
+			</header>
+			<div class="main">
+				<ul id="og-grid" class="og-grid"></ul>
+				<div class="input-field">
+					<label for="new-par-input">New Paragraph:</label>
+					<textarea id="new-par-input" autofocus></textarea>
+				</div>
+				
+				<p class="credits">by <a href="http://vk.com/lkleonov" target="blank_">Alexey Leonov</a></p>
+			</div>
+
+		</div><!-- /container -->
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+		<script src='https://cdn.firebase.com/js/client/2.0.4/firebase.js'></script>
+		<script src="js/grid.js"></script>
+		<script src="js/jquery.autosize.min.js"></script>
+
+		<script>
+			Grid.init();
+			var fb = new Firebase('https://scrapyard.firebaseio.com'),
+		  		$El = {
+		  			body: $('body'),
+		  			container: $('.main'),
+		  			entry: $('#og-grid'),
+		  			inputField: $('.input-field'),
+		  			newParInput: $('#new-par-input'),
+		  			loading: $('.loading')
+		  		},
+		  		totalPars = 0;
+
+		  function createPar(key, text) {
+		  // logic
+		  	var newA = document.createElement('a'), 
+	  			newLi = document.createElement('li'),
+	  			delDiv = document.createElement('span'),
+	  			$newA = $(newA),
+	  			$newLi = $(newLi),
+	  			$delDiv = $(delDiv).text('x').addClass('delete paragraph');
+
+		  	$newA.attr('data-key', key).text(text);
+		  	$newLi.append($newA).attr('data-key', key);
+		  	$delDiv.prependTo($newLi);
+		  	$newLi.appendTo($El.entry);
+
+		  	Grid.addItems($newLi);
+
+		  // view
+				$('body')[0].scrollTop = $('body')[0].scrollHeight;
+				console.log($El.entry.children().length, totalPars);
+
+				// on displaying data complete: 
+				if ($El.entry.children().length == totalPars) {
+					console.log('Data is displayed');
+					$El.newParInput.autosize();
+					$El.container.addClass('show');
+					// $El.loading.removeClass('show');
+				}
+
+		  };
+
+			// storing in fb new paragraph on Enter
+		  $El.newParInput.keypress(function (e) {
+		    if (e.keyCode == 13) {
+		      //myDataRef.set({name: name, text: text});
+		      fb.push({ text: this.value });
+		      this.value = '';
+		    }
+		  });
+		  
+		  function onExpanderCreated ($par, $expCommCont, $expInput) { // default callback on expander creating
+		  	//if closed
+		  	if ($par == null) {
+		  		console.log('null');
+		  		return;
+		  	}
+		  // view
+			 	$expInput.focus();
+			 	$expInput.autosize();
+			 	$('body').css('overflow','hidden');
+
+		  // logic
+		  	var parKey = $par.children('a').data('key');
+		  	var currParCommentsRef = fb.child(parKey + '/comment');
+				// storing in fb new comment of the current paragraph on Enter
+		  	$expInput.keypress(function (e) {
+			    if (e.keyCode == 13) {
+			    	currParCommentsRef.push({ text: this.value});
+			      this.value = '';
+			    }
+			  });
+
+			  currParCommentsRef.on('child_added', function(snapshot) {
+			    var data = snapshot.val();
+			    var key = snapshot.key();
+			    console.log('FB comment:', data.text);
+			    createComment(key, data.text);
+			  });
+
+		    function createComment(key, text) {
+		    	var newLi = document.createElement('li'),
+		    		delDiv = document.createElement('div'),
+		    		$newLi = $(newLi),
+		    		$delDiv = $(delDiv).text('x').addClass('delete comment');
+		    	$newLi.attr('data-key', key).text(text).appendTo($expCommCont);
+		    	$delDiv.prependTo($newLi);
+		    };
+
+		    // del comment
+	    	//logic
+				$El.entry.on('click', '.delete.comment', function() {
+					var $commLi = $(this).parent()
+					var commKey = $commLi.data('key');
+					var currCommentRef = currParCommentsRef.child(commKey);
+					currCommentRef.remove();
+				//view
+					$commLi.remove();
+
+				});
+		  }
+
+		  	$El.entry.on('click', '.delete.paragraph', function() {
+		  		var $par = $(this).parent();
+		  		var parKey = $(this).next().data('key');
+		  		var currParRef = fb.child(parKey);
+		  		currParRef.remove();
+		  	//view
+		  		$par.remove();
+
+		  	});
+
+			function onDataCounted(totalPars) { // displaying DOM-elements function can be called
+				fb.on('child_added', function(snapshot) {
+				  var data = snapshot.val();
+				  var key = snapshot.key();
+				  console.log('FB Paragraph:', data.text);
+				  createPar(key, data.text);
+				});
+			}
+
+			// Data counter
+		  fb.once("value", function(snap) {
+		    if ( snap.val() ) totalPars = Object.keys(snap.val()).length;
+		    else {
+		    	$El.container.addClass('show');
+		    	$El.newParInput.autosize();
+		    } 
+		    onDataCounted(totalPars);
+		  });
+
+		  function onExpanderRemoved() {
+		  	console.log('ok');
+		  	$('body').css('overflow', 'initial');
+		  }
+		 
+		</script>
+	</body>
+</html>
